@@ -10,10 +10,19 @@ import (
 
 var serverAddr = "localhost:50001"
 
+func DoGetRate(client pb.ExchangeServiceClient, base, target string) {
+	req := pb.RateRequest{
+		Base:   base,
+		Target: target,
+	}
+	GetRate(client, &req)
+}
+
 func GetRate(client pb.ExchangeServiceClient, req *pb.RateRequest) {
 	reply, err := client.GetRate(context.Background(), req)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err, req)
+		return
 	}
 	log.Println(reply)
 }
@@ -30,9 +39,10 @@ func main() {
 
 	client := pb.NewExchangeServiceClient(conn)
 
-	req := pb.RateRequest{
-		Base:   "USD",
-		Target: "TWD",
-	}
-	GetRate(client, &req)
+	DoGetRate(client, "USD", "TWD")
+	DoGetRate(client, "USD", "CCC")
+	DoGetRate(client, "USD", "CNY")
+	DoGetRate(client, "USD", "JPY")
+	DoGetRate(client, "TWD", "JPY")
+
 }
