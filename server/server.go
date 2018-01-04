@@ -25,17 +25,53 @@ type ExchangeServer struct {
 }
 
 func (s *ExchangeServer) GetRate(ctx context.Context, in *pb.RateRequest) (*pb.RateReply, error) {
-	key := in.Base + in.Target
-	rateData, ok := s.RateMap[key]
-	if !ok {
-		return nil, grpc.Errorf(codes.OutOfRange, "currency data not found")
+	var exrate float64
+
+	if in.Base == in.Target {
+		exrate = 1
+	} else if in.Base == "USD" {
+		key := in.Base + in.Target
+		rateData, err := s.findCurrency(key)
+		if err != nil {
+			return nil, err
+		}
+		exrate = rateData.Exrate
+	} else if in.Target == "USD" {
+		key := in.Target + in.Base
+		rateData, err := s.findCurrency(key)
+		if err != nil {
+			return nil, err
+		}
+		exrate = 1 / rateData.Exrate
+	} else {
+		key := "USD" + in.Base
+		baseData, err := s.findCurrency(key)
+		if err != nil {
+			return nil, err
+		}
+
+		key2 := "USD" + in.Target
+		targetData, err := s.findCurrency(key2)
+		if err != nil {
+			return nil, err
+		}
+		exrate = targetData.Exrate / baseData.Exrate
 	}
 
 	return &pb.RateReply{
 		Base:   in.Base,
 		Target: in.Target,
-		Rate:   rateData.Exrate,
+		Rate:   exrate,
 	}, nil
+}
+
+func (s *ExchangeServer) findCurrency(key string) (*Rate, error) {
+	r, ok := s.RateMap[key]
+	if !ok {
+		return nil, grpc.Errorf(codes.OutOfRange, "currency data not found")
+	}
+
+	return &r, nil
 }
 
 type Rate struct {
