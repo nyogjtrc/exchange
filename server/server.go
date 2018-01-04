@@ -8,7 +8,12 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	pb "github.com/nyogjtrc/exchange"
+	"github.com/nyogjtrc/exchange/health"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -104,6 +109,18 @@ func FetchRateAPI() RateMap {
 	return m
 }
 
+type HealthServer struct{}
+
+func NewHealthServer() *HealthServer {
+	return &HealthServer{}
+}
+
+func (s *HealthServer) Check(ctx context.Context, req *health.Empty) (*health.HealthReply, error) {
+	return &health.HealthReply{
+		Status: health.HealthReply_SERVING,
+	}, nil
+}
+
 func main() {
 	lis, err := net.Listen("tcp", serverAddr)
 	if err != nil {
@@ -115,7 +132,15 @@ func main() {
 		RateMap:   FetchRateAPI(),
 	}
 
-	s := grpc.NewServer()
+	healServer := NewHealthServer()
+
+	s := grpc.NewServer(
+		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+			grpc_ctxtags.UnaryServerInterceptor(),
+			grpc_zap.UnaryServerInterceptor(zap.NewExample()),
+		)),
+	)
 	pb.RegisterExchangeServiceServer(s, exServer)
+	health.RegisterHealthServer(s, healServer)
 	s.Serve(lis)
 }
