@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
@@ -30,37 +32,9 @@ type ExchangeServer struct {
 }
 
 func (s *ExchangeServer) GetRate(ctx context.Context, in *pb.RateRequest) (*pb.RateReply, error) {
-	var exrate float64
-
-	if in.Base == in.Target {
-		exrate = 1
-	} else if in.Base == "USD" {
-		key := in.Base + in.Target
-		rateData, err := s.findCurrency(key)
-		if err != nil {
-			return nil, err
-		}
-		exrate = rateData.Exrate
-	} else if in.Target == "USD" {
-		key := in.Target + in.Base
-		rateData, err := s.findCurrency(key)
-		if err != nil {
-			return nil, err
-		}
-		exrate = 1 / rateData.Exrate
-	} else {
-		key := "USD" + in.Base
-		baseData, err := s.findCurrency(key)
-		if err != nil {
-			return nil, err
-		}
-
-		key2 := "USD" + in.Target
-		targetData, err := s.findCurrency(key2)
-		if err != nil {
-			return nil, err
-		}
-		exrate = targetData.Exrate / baseData.Exrate
+	exrate, err := s.findRate(in.Base, in.Target)
+	if err != nil {
+		return nil, err
 	}
 
 	return &pb.RateReply{
@@ -77,6 +51,71 @@ func (s *ExchangeServer) findCurrency(key string) (*Rate, error) {
 	}
 
 	return &r, nil
+}
+
+func (s *ExchangeServer) findRate(base, target string) (float64, error) {
+	if base == target {
+		return 1, nil
+	} else if base == "USD" {
+		key := base + target
+		rateData, err := s.findCurrency(key)
+		if err != nil {
+			return 0, err
+		}
+		return rateData.Exrate, nil
+	} else if target == "USD" {
+		key := target + base
+		rateData, err := s.findCurrency(key)
+		if err != nil {
+			return 0, err
+		}
+		return 1 / rateData.Exrate, nil
+	} else {
+		key := "USD" + base
+		baseData, err := s.findCurrency(key)
+		if err != nil {
+			return 0, err
+		}
+
+		key2 := "USD" + target
+		targetData, err := s.findCurrency(key2)
+		if err != nil {
+			return 0, err
+		}
+		return targetData.Exrate / baseData.Exrate, nil
+	}
+}
+
+func (s *ExchangeServer) ListRate(stream pb.ExchangeService_ListRateServer) error {
+	startTime := time.Now()
+	var count int32
+	var plys []*pb.RateReply
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			endTime := time.Now()
+			return stream.SendAndClose(&pb.RateList{
+				Count:    count,
+				Rates:    plys,
+				CostTime: int32(endTime.Sub(startTime).Seconds()),
+			})
+		}
+		if err != nil {
+			return err
+		}
+
+		rate, err := s.findRate(req.Base, req.Target)
+		if err != nil {
+			return err
+		}
+		plys = append(plys, &pb.RateReply{
+			Base:   req.Base,
+			Target: req.Target,
+			Rate:   rate,
+		})
+
+		count++
+	}
 }
 
 type Rate struct {

@@ -4,6 +4,7 @@ package exchange;
 
 service ExchangeService {
     rpc GetRate(RateRequest) returns (RateReply) {}
+    rpc ListRate(stream RateRequest) returns (RateList) {}
 }
 
 message RateRequest {
@@ -15,4 +16,10 @@ message RateReply {
     string base = 1;
     string target = 2;
     double rate = 3;
+}
+
+message RateList {
+    int32 count = 1;
+    repeated RateReply rates = 2;
+    int32 cost_time = 3;
 }
