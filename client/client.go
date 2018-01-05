@@ -27,6 +27,43 @@ func GetRate(client pb.ExchangeServiceClient, req *pb.RateRequest) {
 	log.Println(reply)
 }
 
+func ListRate(client pb.ExchangeServiceClient) {
+	reqs := []pb.RateRequest{
+		pb.RateRequest{
+			Base:   "USD",
+			Target: "TWD",
+		},
+		pb.RateRequest{
+			Base:   "USD",
+			Target: "CNY",
+		},
+		pb.RateRequest{
+			Base:   "JPY",
+			Target: "TWD",
+		},
+	}
+	stream, err := client.ListRate(context.Background())
+	if err != nil {
+		log.Panicln(err)
+		return
+	}
+
+	for _, req := range reqs {
+		if err = stream.Send(&req); err != nil {
+			log.Panicln(err)
+			return
+		}
+	}
+
+	recv, err := stream.CloseAndRecv()
+	if err != nil {
+		log.Panicln(err)
+		return
+	}
+
+	log.Println(recv)
+}
+
 func main() {
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithInsecure())
@@ -45,4 +82,7 @@ func main() {
 	DoGetRate(client, "USD", "JPY")
 	DoGetRate(client, "TWD", "JPY")
 
+	log.Println("")
+
+	ListRate(client)
 }
